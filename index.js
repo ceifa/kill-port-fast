@@ -73,6 +73,32 @@ function mapPidsFromNetstat(stdout, portSet, protocol) {
 	return map
 }
 
+function mapPidsFromNetstatMac(stdout, portSet) {
+	const map = new Map()
+	for (const line of stdout.split(/\r?\n/)) {
+		const parts = line.trim().split(/\s+/)
+		// Parsing specific to macOS netstat -nav -p tcp
+		// Example: tcp46 0 0 *.50000 *.* LISTEN ... node:21157 ...
+		const localAddress = parts[3]
+		if (!localAddress) continue
+
+		const lastDotIndex = localAddress.lastIndexOf('.')
+		if (lastDotIndex === -1) continue
+
+		const port = Number.parseInt(localAddress.slice(lastDotIndex + 1), 10)
+		if (!port || !portSet.has(port)) continue
+
+		// Find PID part: logic to look for "processName:PID"
+		// The generic layout often puts it near the end, but let's scan for colon-separated PID
+		const pidToken = parts.find(p => p.includes(':') && /^\d+$/.test(p.split(':')[1]))
+		if (pidToken) {
+			const pid = pidToken.split(':')[1]
+			addToMapSet(map, port, pid)
+		}
+	}
+	return map
+}
+
 function mapPidsFromFuser(stdout, stderr, portSet) {
 	const map = new Map()
 
@@ -147,6 +173,12 @@ function listPidsByPort(ports, method) {
 		return res.stdout ? mapPidsFromNetstat(res.stdout, portSet, protocol) : new Map()
 	}
 
+	if (process.platform === 'darwin') {
+		const res = sh('netstat', ['-nav', '-p', protocol])
+		if (res.error) throw res.error
+		return res.stdout ? mapPidsFromNetstatMac(res.stdout, portSet) : new Map()
+	}
+
 	const portList = ports.join(',')
 	const lsofArgs = isUdp(method)
 		? ['-nP', `-iUDP:${portList}`, '-Fpn']
@@ -189,6 +221,19 @@ export default function killPort(port, method = 'tcp') {
 			if (!pids?.size) throw new Error('No process running on port')
 			return { pids: [...pids] }
 		}
+	}
+
+	if (process.platform === 'darwin') {
+		const res = sh('netstat', ['-nav', '-p', protocol])
+		if (res.error) throw res.error
+		if (!res.stdout) return res
+
+		const portSet = new Set([port])
+		const pidMap = mapPidsFromNetstatMac(res.stdout, portSet)
+		const pids = pidMap.get(port)
+
+		if (!pids || pids.size === 0) throw new Error('No process running on port')
+		return killPids([...pids])
 	}
 
 	const lsofArgs = udp

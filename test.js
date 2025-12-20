@@ -79,6 +79,19 @@ async function waitForPortAvailable(port, maxAttempts = 10) {
   return false
 }
 
+async function waitForUdpPortAvailable(port, maxAttempts = 10) {
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      const socket = await createUdpServer(port)
+      socket.close()
+      return true
+    } catch {
+      await delay(100)
+    }
+  }
+  return false
+}
+
 describe('killPort', () => {
   test('should be defined', () => {
     assert.ok(kill)
@@ -275,9 +288,9 @@ describe('integration tests', () => {
       assert.ok(result.pids)
       assert.ok(result.pids.length > 0)
 
-      // Verify socket is killed by trying to create a new one on same port
-      const newSocket = await createUdpServer(port)
-      newSocket.close()
+      // Verify socket is killed by waiting for port to become available
+      const available = await waitForUdpPortAvailable(port)
+      assert.ok(available, 'Port should be available after killing the process')
     })
   })
 
