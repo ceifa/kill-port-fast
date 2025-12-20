@@ -1,0 +1,50 @@
+name: Publish
+
+on:
+    push:
+        branches: [main]
+
+permissions:
+    contents: read
+    id-token: write
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run tests
+        run: npm test
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Publish to npm
+        run: |
+          npm publish --access public 2>&1 || {
+            if [[ $? -eq 1 ]] && npm view "$(npm pkg get name | tr -d '"')@$(npm pkg get version | tr -d '"')" version >/dev/null 2>&1; then
+              echo "Version already published, skipping..."
+              exit 0
+            fi
+            exit 1
+          }

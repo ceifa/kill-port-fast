@@ -2,7 +2,6 @@ import { spawnSync } from 'child_process'
 
 const toPortNumber = (value) => Number.parseInt(value, 10) || null
 const isUdp = (method) => String(method || 'tcp').toLowerCase() === 'udp'
-let ssUsable = null
 let fuserUsable = null
 
 function sh(command, args) {
@@ -92,47 +91,9 @@ function mapPidsFromFuser(output, portSet) {
 	return map
 }
 
-function buildSsFilterTokens(ports) {
-	const tokens = []
-	ports.forEach((port, index) => {
-		if (index > 0) tokens.push('or')
-		tokens.push('sport', '=', `:${port}`)
-	})
-	return tokens
-}
-
-function buildSsArgs(ports, method) {
-	const args = ['-H', isUdp(method) ? '-lunp' : '-ltnp']
-	const filterTokens = buildSsFilterTokens([...new Set(ports)])
-	if (filterTokens.length) args.push(...filterTokens)
-	return args
-}
-
-function mapPidsFromSs(stdout, portSet) {
-	const map = new Map()
-	for (const rawLine of stdout.split(/\r?\n/)) {
-		if (!rawLine) continue
-		const parts = rawLine.trim().split(/\s+/)
-		if (parts.length < 5) continue
-		const localAddress = parts[3]
-		const colonIndex = localAddress.lastIndexOf(':')
-		if (colonIndex == null || colonIndex < 0) continue
-		const port = Number.parseInt(localAddress.slice(colonIndex + 1), 10)
-		if (!port || !portSet.has(port)) continue
-
-		const processInfo = parts.slice(5).join(' ')
-		if (!processInfo) continue
-
-		for (const match of processInfo.matchAll(/pid=(\d+)/g)) {
-			addToMapSet(map, port, match[1])
-		}
-	}
-	return map
-}
-
 function buildFuserArgs(ports, method) {
 	const protocol = isUdp(method) ? 'udp' : 'tcp'
-	return [...new Set(ports)].map(port => `${port}/${protocol}`)
+	return ports.map(port => `${port}/${protocol}`)
 }
 
 function tryKillPortsWithFuser(ports, method) {
@@ -153,25 +114,10 @@ function tryKillPortsWithFuser(ports, method) {
 	const output = [res.stdout, res.stderr].filter(Boolean).join('\n')
 	const portSet = new Set(ports)
 	const portMap = output ? mapPidsFromFuser(output, portSet) : new Map()
+	// If exit code 1 (no processes found) and couldn't parse any PIDs, fall back to other methods
+	// Note: exit code 0 means fuser killed something, so we return the result even if parsing failed
+	if (res.code === 1 && portMap.size === 0) return null
 	return { portMap }
-}
-
-function listPidsByPortWithSs(ports, portSet, method) {
-	if (process.platform !== 'linux') return null
-	if (ssUsable === false) return null
-
-	const res = sh('ss', buildSsArgs(ports, method))
-	if (res.error) {
-		if (res.error.code === 'ENOENT') ssUsable = false
-		return null
-	}
-	if (res.code > 1 || (res.code === 1 && res.stderr)) {
-		ssUsable = false
-		return null
-	}
-
-	ssUsable = true
-	return res.stdout ? mapPidsFromSs(res.stdout, portSet) : new Map()
 }
 
 function listPidsByPort(ports, method) {
@@ -183,9 +129,6 @@ function listPidsByPort(ports, method) {
 		if (res.error) throw res.error
 		return res.stdout ? mapPidsFromNetstat(res.stdout, portSet, protocol) : new Map()
 	}
-
-	const ssMap = listPidsByPortWithSs(ports, portSet, method)
-	if (ssMap !== null) return ssMap
 
 	const portList = ports.join(',')
 	const lsofArgs = isUdp(method)
@@ -228,14 +171,6 @@ export default function killPort(port, method = 'tcp') {
 			const pids = fuserResult.portMap.get(port)
 			if (!pids?.size) throw new Error('No process running on port')
 			return { pids: [...pids] }
-		}
-
-		const portSet = new Set([port])
-		const ssMap = listPidsByPortWithSs([port], portSet, method)
-		if (ssMap !== null) {
-			const pids = ssMap.get(port)
-			if (!pids?.size) throw new Error('No process running on port')
-			return killPids([...pids])
 		}
 	}
 
