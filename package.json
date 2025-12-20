@@ -1,6 +1,6 @@
 {
 	"name": "kill-port-fast",
-	"version": "0.1.1",
+	"version": "0.2.0",
 	"description": "Kill process running on given port",
 	"license": "MIT",
 	"type": "module",
@@ -13,7 +13,7 @@
 	"bugs": "https://github.com/ceifa/kill-port-fast/issues",
 	"author": "Tiaan du Plessis",
 	"bin": {
-		"kill-port": "cli.js"
+		"kill-port-fast": "cli.js"
 	},
 	"scripts": {
 		"start": "npm run dev",

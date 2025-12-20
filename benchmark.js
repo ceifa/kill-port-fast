@@ -121,4 +121,4 @@ async function main() {
   console.log(`  Batch (5 ports): kill-port-fast is ${batchSpeedup.toFixed(2)}x faster`)
 }
 
-main().catch(console.error)
+await main()

@@ -3,7 +3,7 @@ import { spawnSync } from 'child_process'
 const toPortNumber = (value) => Number.parseInt(value, 10) || null
 const isUdp = (method) => String(method || 'tcp').toLowerCase() === 'udp'
 
-function sh(command, args) {
+function run(command, args) {
 	const result = spawnSync(command, args, { windowsHide: true, encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 })
 	return {
 		stdout: result.stdout || '',
@@ -147,7 +147,7 @@ function buildFuserArgs(ports, method) {
 }
 
 function tryKillPortsWithFuser(ports, method) {
-	const res = sh('fuser', ['-k', ...buildFuserArgs(ports, method)])
+	const res = run('fuser', ['-k', ...buildFuserArgs(ports, method)])
 	if (res.error) {
 		return null
 	}
@@ -168,13 +168,13 @@ function listPidsByPort(ports, method) {
 	const protocol = isUdp(method) ? 'UDP' : 'TCP'
 
 	if (process.platform === 'win32') {
-		const res = sh('netstat', ['-nao', '-p', protocol])
+		const res = run('netstat', ['-nao', '-p', protocol])
 		if (res.error) throw res.error
 		return res.stdout ? mapPidsFromNetstat(res.stdout, portSet, protocol) : new Map()
 	}
 
 	if (process.platform === 'darwin') {
-		const res = sh('netstat', ['-nav', '-p', protocol])
+		const res = run('netstat', ['-nav', '-p', protocol])
 		if (res.error) throw res.error
 		return res.stdout ? mapPidsFromNetstatMac(res.stdout, portSet) : new Map()
 	}
@@ -184,7 +184,7 @@ function listPidsByPort(ports, method) {
 		? ['-nP', `-iUDP:${portList}`, '-Fpn']
 		: ['-nP', `-iTCP:${portList}`, '-sTCP:LISTEN', '-Fpn']
 
-	const res = sh('lsof', lsofArgs)
+	const res = run('lsof', lsofArgs)
 	if (res.error) throw res.error
 	if (res.code > 1) throw new Error(res.stderr || 'Failed to run lsof')
 	return res.stdout ? mapPidsFromLsof(res.stdout, portSet) : new Map()
@@ -198,7 +198,7 @@ export default function killPort(port, method = 'tcp') {
 	const protocol = udp ? 'UDP' : 'TCP'
 
 	if (process.platform === 'win32') {
-		const res = sh('netstat', ['-nao', '-p', protocol])
+		const res = run('netstat', ['-nao', '-p', protocol])
 		if (res.error) throw res.error
 		if (!res.stdout) return res
 
@@ -224,7 +224,7 @@ export default function killPort(port, method = 'tcp') {
 	}
 
 	if (process.platform === 'darwin') {
-		const res = sh('netstat', ['-nav', '-p', protocol])
+		const res = run('netstat', ['-nav', '-p', protocol])
 		if (res.error) throw res.error
 		if (!res.stdout) return res
 
@@ -240,7 +240,7 @@ export default function killPort(port, method = 'tcp') {
 		? ['-nP', '-t', `-iUDP:${port}`]
 		: ['-nP', '-t', `-iTCP:${port}`, '-sTCP:LISTEN']
 
-	const res = sh('lsof', lsofArgs)
+	const res = run('lsof', lsofArgs)
 	if (res.error) throw res.error
 
 	const pids = (res.stdout || '').trim().split(/\s+/).filter(Boolean)
