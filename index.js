@@ -2,7 +2,6 @@ import { spawnSync } from 'child_process'
 
 const toPortNumber = (value) => Number.parseInt(value, 10) || null
 const isUdp = (method) => String(method || 'tcp').toLowerCase() === 'udp'
-let fuserUsable = null
 
 function sh(command, args) {
 	const result = spawnSync(command, args, { windowsHide: true, encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 })
@@ -74,20 +73,45 @@ function mapPidsFromNetstat(stdout, portSet, protocol) {
 	return map
 }
 
-function mapPidsFromFuser(output, portSet) {
+function mapPidsFromFuser(stdout, stderr, portSet) {
 	const map = new Map()
-	const pattern = /(\d+)\/(?:tcp|tcp6|udp|udp6):\s*([0-9\s]+)/gi
-	for (const match of output.matchAll(pattern)) {
+
+	// fuser output format:
+	// stdout: "    18    19" (PIDs only, space-separated)
+	// stderr (non-verbose): "3456/tcp:           \n3457/tcp:           \n"
+	// stderr (verbose):
+	//   "                     USER        PID ACCESS COMMAND\n"
+	//   "3456/tcp:            root      F.... node\n"
+	//   "3457/tcp:            root      F.... node\n"
+	//
+	// PIDs in stdout appear in same order as ports in stderr
+
+	const portsInOrder = []
+	const portHeaderPattern = /^(\d+)\/(?:tcp|tcp6|udp|udp6):/gim
+	for (const match of stderr.matchAll(portHeaderPattern)) {
 		const port = Number.parseInt(match[1], 10)
-		if (!port || !portSet.has(port)) continue
+		if (port) portsInOrder.push(port)
+	}
 
-		const pidPart = match[2].trim()
-		if (!pidPart) continue
+	const pidsInOrder = stdout.trim().split(/\s+/).filter(p => /^\d+$/.test(p))
+	if (portsInOrder.length === 1 && pidsInOrder.length > 0) {
+		const port = portsInOrder[0]
+		if (portSet.has(port)) {
+			for (const pid of pidsInOrder) {
+				addToMapSet(map, port, pid)
+			}
+		}
+		return map
+	}
 
-		for (const pid of pidPart.split(/\s+/)) {
-			if (/^\d+$/.test(pid)) addToMapSet(map, port, pid)
+	for (let i = 0; i < portsInOrder.length && i < pidsInOrder.length; i++) {
+		const port = portsInOrder[i]
+		const pid = pidsInOrder[i]
+		if (portSet.has(port)) {
+			addToMapSet(map, port, pid)
 		}
 	}
+
 	return map
 }
 
@@ -97,23 +121,16 @@ function buildFuserArgs(ports, method) {
 }
 
 function tryKillPortsWithFuser(ports, method) {
-	if (process.platform !== 'linux') return null
-	if (fuserUsable === false) return null
-
 	const res = sh('fuser', ['-k', ...buildFuserArgs(ports, method)])
 	if (res.error) {
-		if (res.error.code === 'ENOENT') fuserUsable = false
 		return null
 	}
 	if (res.code > 1) {
-		fuserUsable = false
 		return null
 	}
 
-	fuserUsable = true
-	const output = [res.stdout, res.stderr].filter(Boolean).join('\n')
 	const portSet = new Set(ports)
-	const portMap = output ? mapPidsFromFuser(output, portSet) : new Map()
+	const portMap = mapPidsFromFuser(res.stdout, res.stderr, portSet)
 	// If exit code 1 (no processes found) and couldn't parse any PIDs, fall back to other methods
 	// Note: exit code 0 means fuser killed something, so we return the result even if parsing failed
 	if (res.code === 1 && portMap.size === 0) return null
