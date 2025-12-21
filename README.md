@@ -26,6 +26,7 @@
 - [Usage](#usage)
 - [API](#api)
 - [CLI](#cli)
+- [Performance](#performance)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -121,6 +122,18 @@ $ npx kill-port-fast 9000 --method udp
 $ npx kill-port-fast --port 8080,5000,3000
 $ npx kill-port-fast 9000 3000 5000
 ```
+
+## Performance
+
+Benchmarks show `kill-port-fast` is **3.5x to 30x faster** than `kill-port`:
+
+| Platform | Single Port | Batch (5 ports) |
+|----------|-------------|-----------------|
+| macOS    | 5.4x faster | 29.9x faster    |
+| Ubuntu   | 5.0x faster | 5.2x faster     |
+| Windows  | 3.5x faster | 7.1x faster     |
+
+> **Fun fact:** This package took mass*ively* more time to develop than you'll ever save by using it instead of `kill-port`. But hey, at least you'll save precious milliseconds while I silently regret my life choices.
 
 ## Contributing
 
