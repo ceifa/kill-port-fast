@@ -1,16 +1,19 @@
-import { spawnSync } from 'child_process'
+import { spawn } from 'child_process'
+import { createInterface } from 'readline'
 
 const toPortNumber = (value) => Number.parseInt(value, 10) || null
 const isUdp = (method) => String(method || 'tcp').toLowerCase() === 'udp'
 
 function run(command, args) {
-	const result = spawnSync(command, args, { windowsHide: true, encoding: 'utf8', maxBuffer: 10 * 1024 * 1024 })
-	return {
-		stdout: result.stdout || '',
-		stderr: result.stderr || '',
-		code: result.status,
-		error: result.error || null
-	}
+	return new Promise((resolve) => {
+		const child = spawn(command, args, { windowsHide: true })
+		let stdout = ''
+		let stderr = ''
+		if (child.stdout) child.stdout.on('data', c => stdout += c)
+		if (child.stderr) child.stderr.on('data', c => stderr += c)
+		child.on('close', code => resolve({ stdout, stderr, code, error: null }))
+		child.on('error', error => resolve({ stdout, stderr, code: null, error }))
+	})
 }
 
 function killPidsSafe(pids) {
@@ -73,45 +76,8 @@ function mapPidsFromNetstat(stdout, portSet, protocol) {
 	return map
 }
 
-function mapPidsFromNetstatMac(stdout, portSet) {
-	const map = new Map()
-	for (const line of stdout.split(/\r?\n/)) {
-		const parts = line.trim().split(/\s+/)
-		// Parsing specific to macOS netstat -nav -p tcp
-		// Example: tcp46 0 0 *.50000 *.* LISTEN ... node:21157 ...
-		const localAddress = parts[3]
-		if (!localAddress) continue
-
-		const lastDotIndex = localAddress.lastIndexOf('.')
-		if (lastDotIndex === -1) continue
-
-		const port = Number.parseInt(localAddress.slice(lastDotIndex + 1), 10)
-		if (!port || !portSet.has(port)) continue
-
-		// Find PID part: logic to look for "processName:PID"
-		// The generic layout often puts it near the end, but let's scan for colon-separated PID
-		const pidToken = parts.find(p => p.includes(':') && /^\d+$/.test(p.split(':')[1]))
-		if (pidToken) {
-			const pid = pidToken.split(':')[1]
-			addToMapSet(map, port, pid)
-		}
-	}
-	return map
-}
-
 function mapPidsFromFuser(stdout, stderr, portSet) {
 	const map = new Map()
-
-	// fuser output format:
-	// stdout: "    18    19" (PIDs only, space-separated)
-	// stderr (non-verbose): "3456/tcp:           \n3457/tcp:           \n"
-	// stderr (verbose):
-	//   "                     USER        PID ACCESS COMMAND\n"
-	//   "3456/tcp:            root      F.... node\n"
-	//   "3457/tcp:            root      F.... node\n"
-	//
-	// PIDs in stdout appear in same order as ports in stderr
-
 	const portsInOrder = []
 	const portHeaderPattern = /^(\d+)\/(?:tcp|tcp6|udp|udp6):/gim
 	for (const match of stderr.matchAll(portHeaderPattern)) {
@@ -137,7 +103,6 @@ function mapPidsFromFuser(stdout, stderr, portSet) {
 			addToMapSet(map, port, pid)
 		}
 	}
-
 	return map
 }
 
@@ -146,37 +111,96 @@ function buildFuserArgs(ports, method) {
 	return ports.map(port => `${port}/${protocol}`)
 }
 
-function tryKillPortsWithFuser(ports, method) {
-	const res = run('fuser', ['-k', ...buildFuserArgs(ports, method)])
-	if (res.error) {
-		return null
-	}
-	if (res.code > 1) {
-		return null
-	}
+async function tryKillPortsWithFuser(ports, method) {
+	const res = await run('fuser', ['-k', ...buildFuserArgs(ports, method)])
+	if (res.error) return null
+	if (res.code > 1) return null
 
 	const portSet = new Set(ports)
 	const portMap = mapPidsFromFuser(res.stdout, res.stderr, portSet)
-	// If exit code 1 (no processes found) and couldn't parse any PIDs, fall back to other methods
-	// Note: exit code 0 means fuser killed something, so we return the result even if parsing failed
 	if (res.code === 1 && portMap.size === 0) return null
 	return { portMap }
 }
 
-function listPidsByPort(ports, method) {
+async function listPidsByPort(ports, method) {
 	const portSet = new Set(ports)
 	const protocol = isUdp(method) ? 'UDP' : 'TCP'
 
 	if (process.platform === 'win32') {
-		const res = run('netstat', ['-nao', '-p', protocol])
+		const res = await run('netstat', ['-nao', '-p', protocol])
 		if (res.error) throw res.error
 		return res.stdout ? mapPidsFromNetstat(res.stdout, portSet, protocol) : new Map()
 	}
 
 	if (process.platform === 'darwin') {
-		const res = run('netstat', ['-nav', '-p', protocol])
-		if (res.error) throw res.error
-		return res.stdout ? mapPidsFromNetstatMac(res.stdout, portSet) : new Map()
+		return new Promise((resolve, reject) => {
+			const map = new Map()
+			const args = ['-nav', '-p', protocol.toLowerCase()]
+			const child = spawn('netstat', args, { windowsHide: true })
+			if (child.error) return reject(child.error)
+
+			const rl = createInterface({ input: child.stdout, crlfDelay: Infinity })
+			let pidIndex = -1
+
+			rl.on('line', (line) => {
+				line = line.trim()
+				if (!line) return
+
+				if (line.toLowerCase().startsWith('proto')) {
+					const parts = line.split(/\s+/)
+					const normalized = []
+					for (let i = 0; i < parts.length; i++) {
+						const part = parts[i].toLowerCase()
+						const next = parts[i + 1]?.toLowerCase()
+						if (part === 'local' && next === 'address') {
+							normalized.push('local_address')
+							i++
+							continue
+						}
+						if (part === 'foreign' && next === 'address') {
+							normalized.push('foreign_address')
+							i++
+							continue
+						}
+						normalized.push(part)
+					}
+					pidIndex = normalized.indexOf('pid')
+					return
+				}
+
+				// Fast filtering: check if line contains any of our ports
+				// This is a heuristic optimization but let's do precise parsing to be safe
+				const parts = line.split(/\s+/)
+				const localAddress = parts[3]
+				if (!localAddress) return
+
+				const lastDotIndex = localAddress.lastIndexOf('.')
+				if (lastDotIndex === -1) return
+
+				const port = Number.parseInt(localAddress.slice(lastDotIndex + 1), 10)
+				if (!port || !portSet.has(port)) return
+
+				let pid = null
+				const pidToken = pidIndex !== -1 ? parts[pidIndex] : null
+				if (pidToken && /^\d+$/.test(pidToken) && pidToken !== '0') {
+					pid = pidToken
+				} else {
+					// Fallback parsing strategies
+					const namePid = parts.find(p => /:\d+$/.test(p) && !p.includes('.'))
+					if (namePid) {
+						pid = namePid.split(':')[1]
+					} else {
+						const pidName = parts.find(p => /^\d+\/\S+/.test(p))
+						if (pidName) pid = pidName.split('/')[0]
+					}
+				}
+
+				if (pid) addToMapSet(map, port, pid)
+			})
+
+			rl.on('close', () => resolve(map))
+			child.on('error', reject)
+		})
 	}
 
 	const portList = ports.join(',')
@@ -184,13 +208,13 @@ function listPidsByPort(ports, method) {
 		? ['-nP', `-iUDP:${portList}`, '-Fpn']
 		: ['-nP', `-iTCP:${portList}`, '-sTCP:LISTEN', '-Fpn']
 
-	const res = run('lsof', lsofArgs)
+	const res = await run('lsof', lsofArgs)
 	if (res.error) throw res.error
 	if (res.code > 1) throw new Error(res.stderr || 'Failed to run lsof')
 	return res.stdout ? mapPidsFromLsof(res.stdout, portSet) : new Map()
 }
 
-export default function killPort(port, method = 'tcp') {
+export default async function killPort(port, method = 'tcp') {
 	port = toPortNumber(port)
 	if (!port) throw new Error('Invalid port number provided')
 
@@ -198,7 +222,7 @@ export default function killPort(port, method = 'tcp') {
 	const protocol = udp ? 'UDP' : 'TCP'
 
 	if (process.platform === 'win32') {
-		const res = run('netstat', ['-nao', '-p', protocol])
+		const res = await run('netstat', ['-nao', '-p', protocol])
 		if (res.error) throw res.error
 		if (!res.stdout) return res
 
@@ -215,7 +239,7 @@ export default function killPort(port, method = 'tcp') {
 	}
 
 	if (process.platform === 'linux') {
-		const fuserResult = tryKillPortsWithFuser([port], method)
+		const fuserResult = await tryKillPortsWithFuser([port], method)
 		if (fuserResult) {
 			const pids = fuserResult.portMap.get(port)
 			if (!pids?.size) throw new Error('No process running on port')
@@ -224,14 +248,8 @@ export default function killPort(port, method = 'tcp') {
 	}
 
 	if (process.platform === 'darwin') {
-		const res = run('netstat', ['-nav', '-p', protocol])
-		if (res.error) throw res.error
-		if (!res.stdout) return res
-
-		const portSet = new Set([port])
-		const pidMap = mapPidsFromNetstatMac(res.stdout, portSet)
+		const pidMap = await listPidsByPort([port], method)
 		const pids = pidMap.get(port)
-
 		if (!pids || pids.size === 0) throw new Error('No process running on port')
 		return killPids([...pids])
 	}
@@ -240,7 +258,7 @@ export default function killPort(port, method = 'tcp') {
 		? ['-nP', '-t', `-iUDP:${port}`]
 		: ['-nP', '-t', `-iTCP:${port}`, '-sTCP:LISTEN']
 
-	const res = run('lsof', lsofArgs)
+	const res = await run('lsof', lsofArgs)
 	if (res.error) throw res.error
 
 	const pids = (res.stdout || '').trim().split(/\s+/).filter(Boolean)
@@ -251,7 +269,7 @@ export default function killPort(port, method = 'tcp') {
 	return killPids(pids)
 }
 
-export function killPorts(ports, method = 'tcp') {
+export async function killPorts(ports, method = 'tcp') {
 	const portArray = Array.isArray(ports) ? ports : [ports]
 	const normalizedPorts = portArray.map(p => {
 		const parsed = toPortNumber(p)
@@ -265,7 +283,7 @@ export function killPorts(ports, method = 'tcp') {
 	if (uniquePorts.length === 1) {
 		const port = uniquePorts[0]
 		try {
-			const result = killPort(port, method)
+			const result = await killPort(port, method)
 			const pids = Array.isArray(result?.pids) ? result.pids : []
 			const results = new Map()
 			if (pids.length === 0) {
@@ -289,7 +307,7 @@ export function killPorts(ports, method = 'tcp') {
 	}
 
 	if (process.platform === 'linux') {
-		const fuserResult = tryKillPortsWithFuser(uniquePorts, method)
+		const fuserResult = await tryKillPortsWithFuser(uniquePorts, method)
 		if (fuserResult) {
 			const results = new Map()
 			for (const port of uniquePorts) {
@@ -304,7 +322,7 @@ export function killPorts(ports, method = 'tcp') {
 		}
 	}
 
-	const portMap = listPidsByPort(uniquePorts, method)
+	const portMap = await listPidsByPort(uniquePorts, method)
 	const allPids = new Set([...portMap.values()].flatMap(pids => [...pids]))
 	const { failures } = killPidsSafe([...allPids])
 	const failedPidSet = new Set(failures.map(f => String(f.pid)))

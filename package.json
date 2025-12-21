@@ -19,7 +19,6 @@
 		"start": "npm run dev",
 		"test": "node --test",
 		"benchmark": "node benchmark.js",
-		"benchmark:debug": "node benchmark.js --debug",
 		"precommit": "npm test"
 	},
 	"keywords": [

@@ -35,7 +35,7 @@ if (!uniquePorts.length) {
 	inputPorts.forEach(p => log(p, false, 'Invalid port number provided'))
 } else {
 	try {
-		const { results } = killPorts(uniquePorts, method)
+		const { results } = await killPorts(uniquePorts, method)
 		const seen = new Set()
 
 		inputPorts.forEach((port, i) => {

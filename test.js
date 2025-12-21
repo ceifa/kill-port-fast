@@ -98,75 +98,75 @@ describe('killPort', () => {
   })
 
   describe('invalid port inputs', () => {
-    test('should throw if no port is provided', () => {
-      assert.throws(() => kill(), /Invalid port number provided/)
+    test('should throw if no port is provided', async () => {
+      await assert.rejects(() => kill(), /Invalid port number provided/)
     })
 
-    test('should throw if port is undefined', () => {
-      assert.throws(() => kill(undefined), /Invalid port number provided/)
+    test('should throw if port is undefined', async () => {
+      await assert.rejects(() => kill(undefined), /Invalid port number provided/)
     })
 
-    test('should throw if port is null', () => {
-      assert.throws(() => kill(null), /Invalid port number provided/)
+    test('should throw if port is null', async () => {
+      await assert.rejects(() => kill(null), /Invalid port number provided/)
     })
 
-    test('should throw if port is NaN', () => {
-      assert.throws(() => kill(NaN), /Invalid port number provided/)
+    test('should throw if port is NaN', async () => {
+      await assert.rejects(() => kill(NaN), /Invalid port number provided/)
     })
 
-    test('should throw if port is a non-numeric string', () => {
-      assert.throws(() => kill('abc'), /Invalid port number provided/)
+    test('should throw if port is a non-numeric string', async () => {
+      await assert.rejects(() => kill('abc'), /Invalid port number provided/)
     })
 
-    test('should throw if port is an empty string', () => {
-      assert.throws(() => kill(''), /Invalid port number provided/)
+    test('should throw if port is an empty string', async () => {
+      await assert.rejects(() => kill(''), /Invalid port number provided/)
     })
 
-    test('should throw if port is an object', () => {
-      assert.throws(() => kill({}), /Invalid port number provided/)
+    test('should throw if port is an object', async () => {
+      await assert.rejects(() => kill({}), /Invalid port number provided/)
     })
 
-    test('should throw if port is zero', () => {
-      assert.throws(() => kill(0), /Invalid port number provided/)
+    test('should throw if port is zero', async () => {
+      await assert.rejects(() => kill(0), /Invalid port number provided/)
     })
   })
 
   describe('no process on port', () => {
-    test('should throw if no process running on given port', () => {
-      assert.throws(() => kill(59999), /No process running on port/)
+    test('should throw if no process running on given port', async () => {
+      await assert.rejects(() => kill(59999), /No process running on port/)
     })
 
-    test('should throw for TCP when no process on port', () => {
-      assert.throws(() => kill(59998, 'tcp'), /No process running on port/)
+    test('should throw for TCP when no process on port', async () => {
+      await assert.rejects(() => kill(59998, 'tcp'), /No process running on port/)
     })
   })
 
   describe('method parameter', () => {
-    test('should accept tcp method (lowercase)', () => {
-      assert.throws(() => kill(59997, 'tcp'), /No process running on port/)
+    test('should accept tcp method (lowercase)', async () => {
+      await assert.rejects(() => kill(59997, 'tcp'), /No process running on port/)
     })
 
-    test('should accept TCP method (uppercase)', () => {
-      assert.throws(() => kill(59996, 'TCP'), /No process running on port/)
+    test('should accept TCP method (uppercase)', async () => {
+      await assert.rejects(() => kill(59996, 'TCP'), /No process running on port/)
     })
 
-    test('should accept udp method (lowercase)', () => {
-      assert.throws(() => kill(59995, 'udp'), /No process running on port/)
+    test('should accept udp method (lowercase)', async () => {
+      await assert.rejects(() => kill(59995, 'udp'), /No process running on port/)
     })
 
-    test('should accept UDP method (uppercase)', () => {
-      assert.throws(() => kill(59994, 'UDP'), /No process running on port/)
+    test('should accept UDP method (uppercase)', async () => {
+      await assert.rejects(() => kill(59994, 'UDP'), /No process running on port/)
     })
   })
 
   describe('port as string', () => {
-    test('should parse numeric string port', () => {
-      assert.throws(() => kill('59993'), /No process running on port/)
+    test('should parse numeric string port', async () => {
+      await assert.rejects(() => kill('59993'), /No process running on port/)
     })
 
-    test('should parse numeric string with leading whitespace', () => {
+    test('should parse numeric string with leading whitespace', async () => {
       // parseInt handles leading whitespace, so ' 59992' parses as 59992
-      assert.throws(() => kill(' 59992'), /No process running on port/)
+      await assert.rejects(() => kill(' 59992'), /No process running on port/)
     })
   })
 })
@@ -177,32 +177,32 @@ describe('killPorts', () => {
   })
 
   describe('invalid inputs', () => {
-    test('should throw if port is invalid', () => {
-      assert.throws(() => killPorts('abc'), /Invalid port number provided/)
+    test('should throw if port is invalid', async () => {
+      await assert.rejects(() => killPorts('abc'), /Invalid port number provided/)
     })
 
-    test('should throw if array contains invalid port', () => {
-      assert.throws(() => killPorts([8080, 'abc']), /Invalid port number provided/)
+    test('should throw if array contains invalid port', async () => {
+      await assert.rejects(() => killPorts([8080, 'abc']), /Invalid port number provided/)
     })
 
-    test('should throw if all ports are invalid', () => {
-      assert.throws(() => killPorts(['abc', 'def']), /Invalid port number provided/)
+    test('should throw if all ports are invalid', async () => {
+      await assert.rejects(() => killPorts(['abc', 'def']), /Invalid port number provided/)
     })
 
-    test('should throw if array is empty after filtering', () => {
-      assert.throws(() => killPorts([null, undefined]), /Invalid port number provided/)
+    test('should throw if array is empty after filtering', async () => {
+      await assert.rejects(() => killPorts([null, undefined]), /Invalid port number provided/)
     })
   })
 
   describe('no processes on ports', () => {
-    test('should return not_found for port with no process', () => {
-      const { results } = killPorts([59991])
+    test('should return not_found for port with no process', async () => {
+      const { results } = await killPorts([59991])
       const result = results.get(59991)
       assert.strictEqual(result.status, 'not_found')
     })
 
-    test('should return not_found for multiple ports with no processes', () => {
-      const { results } = killPorts([59990, 59989, 59988])
+    test('should return not_found for multiple ports with no processes', async () => {
+      const { results } = await killPorts([59990, 59989, 59988])
       assert.strictEqual(results.get(59990).status, 'not_found')
       assert.strictEqual(results.get(59989).status, 'not_found')
       assert.strictEqual(results.get(59988).status, 'not_found')
@@ -210,32 +210,32 @@ describe('killPorts', () => {
   })
 
   describe('method parameter', () => {
-    test('should accept tcp method', () => {
-      const { results } = killPorts([59987], 'tcp')
+    test('should accept tcp method', async () => {
+      const { results } = await killPorts([59987], 'tcp')
       assert.strictEqual(results.get(59987).status, 'not_found')
     })
 
-    test('should accept udp method', () => {
-      const { results } = killPorts([59986], 'udp')
+    test('should accept udp method', async () => {
+      const { results } = await killPorts([59986], 'udp')
       assert.strictEqual(results.get(59986).status, 'not_found')
     })
   })
 
   describe('single port as non-array', () => {
-    test('should handle single port number', () => {
-      const { results } = killPorts(59985)
+    test('should handle single port number', async () => {
+      const { results } = await killPorts(59985)
       assert.strictEqual(results.get(59985).status, 'not_found')
     })
 
-    test('should handle single port string', () => {
-      const { results } = killPorts('59984')
+    test('should handle single port string', async () => {
+      const { results } = await killPorts('59984')
       assert.strictEqual(results.get(59984).status, 'not_found')
     })
   })
 
   describe('duplicate ports', () => {
-    test('should deduplicate ports', () => {
-      const { results } = killPorts([59983, 59983, 59983])
+    test('should deduplicate ports', async () => {
+      const { results } = await killPorts([59983, 59983, 59983])
       assert.strictEqual(results.size, 1)
       assert.strictEqual(results.get(59983).status, 'not_found')
     })
@@ -248,7 +248,7 @@ describe('integration tests', () => {
       const port = await findAvailablePort(41000)
       const child = await spawnTcpServer(port)
 
-      const result = kill(port)
+      const result = await kill(port)
       assert.ok(result.pids)
       assert.ok(result.pids.length > 0)
 
@@ -264,7 +264,7 @@ describe('integration tests', () => {
       const child1 = await spawnTcpServer(port1)
       const child2 = await spawnTcpServer(port2)
 
-      const { results } = killPorts([port1, port2])
+      const { results } = await killPorts([port1, port2])
 
       assert.strictEqual(results.get(port1).status, 'killed')
       assert.strictEqual(results.get(port2).status, 'killed')
@@ -284,7 +284,7 @@ describe('integration tests', () => {
       const port = await findAvailablePort(43000)
       const child = await spawnUdpServer(port)
 
-      const result = kill(port, 'udp')
+      const result = await kill(port, 'udp')
       assert.ok(result.pids)
       assert.ok(result.pids.length > 0)
 
@@ -301,7 +301,7 @@ describe('integration tests', () => {
 
       const child = await spawnTcpServer(existingPort)
 
-      const { results } = killPorts([existingPort, nonExistingPort])
+      const { results } = await killPorts([existingPort, nonExistingPort])
 
       assert.strictEqual(results.get(existingPort).status, 'killed')
       assert.strictEqual(results.get(nonExistingPort).status, 'not_found')
