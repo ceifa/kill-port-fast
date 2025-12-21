@@ -50,7 +50,14 @@ function spawnTcpServer(port) {
 
 function spawnUdpServer(port) {
   return new Promise((resolve, reject) => {
-    const code = `require('dgram').createSocket('udp4').bind(${port}, () => console.log('ready'))`
+    const code = `
+      const socket = require('dgram').createSocket('udp4');
+      socket.on('error', (err) => {
+        console.error('Socket error:', err.message);
+        process.exit(1);
+      });
+      socket.bind(${port}, () => console.log('ready'));
+    `
     const child = spawn('node', ['-e', code], { stdio: ['ignore', 'pipe', 'inherit'] })
     child.stdout.on('data', (data) => {
       if (data.toString().includes('ready')) {
@@ -58,7 +65,12 @@ function spawnUdpServer(port) {
       }
     })
     child.on('error', reject)
-    setTimeout(() => reject(new Error('Timeout waiting for server')), 5000)
+    child.on('exit', (code) => {
+      if (code !== 0 && code !== null) {
+        reject(new Error(`UDP server exited with code ${code}`))
+      }
+    })
+    setTimeout(() => reject(new Error('Timeout waiting for UDP server')), 5000)
   })
 }
 
@@ -281,7 +293,21 @@ describe('integration tests', () => {
 
   describe('killing UDP server', () => {
     test('should kill a process listening on a UDP port', async () => {
-      const port = await findAvailablePort(43000)
+      // Find a port that's available for UDP
+      let port = 43000
+      let found = false
+      for (let i = 0; i < 100 && !found; i++) {
+        try {
+          const testSocket = await createUdpServer(port + i)
+          testSocket.close()
+          port = port + i
+          found = true
+        } catch {
+          continue
+        }
+      }
+      if (!found) throw new Error('Could not find available UDP port')
+
       const child = await spawnUdpServer(port)
 
       const result = await kill(port, 'udp')

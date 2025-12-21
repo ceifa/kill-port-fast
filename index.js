@@ -164,12 +164,11 @@ async function listPidsByPort(ports, method) {
 						}
 						normalized.push(part)
 					}
-					pidIndex = normalized.indexOf('pid')
+					pidIndex = normalized.findIndex(p => p === 'pid' || p === 'process:pid')
 					return
 				}
 
 				// Fast filtering: check if line contains any of our ports
-				// This is a heuristic optimization but let's do precise parsing to be safe
 				const parts = line.split(/\s+/)
 				const localAddress = parts[3]
 				if (!localAddress) return
@@ -182,10 +181,19 @@ async function listPidsByPort(ports, method) {
 
 				let pid = null
 				const pidToken = pidIndex !== -1 ? parts[pidIndex] : null
-				if (pidToken && /^\d+$/.test(pidToken) && pidToken !== '0') {
-					pid = pidToken
-				} else {
-					// Fallback parsing strategies
+
+				if (pidToken) {
+					if (/^\d+$/.test(pidToken) && pidToken !== '0' && !pidToken.startsWith('0')) {
+						pid = pidToken
+					} else if (pidToken.includes(':')) {
+						// Handle name:pid format in the column
+						const split = pidToken.split(':')
+						const last = split[split.length - 1]
+						if (/^\d+$/.test(last) && last !== '0' && !last.startsWith('0')) pid = last
+					}
+				}
+
+				if (!pid) {
 					const namePid = parts.find(p => /:\d+$/.test(p) && !p.includes('.'))
 					if (namePid) {
 						pid = namePid.split(':')[1]
@@ -195,10 +203,38 @@ async function listPidsByPort(ports, method) {
 					}
 				}
 
-				if (pid) addToMapSet(map, port, pid)
+				if (pid) {
+					// console.log(`[DEBUG] Found PID ${pid} for port ${port}`)
+					addToMapSet(map, port, pid)
+				}
 			})
 
-			rl.on('close', () => resolve(map))
+			rl.on('close', async () => {
+				// console.log('[DEBUG] Netstat stream closed')
+				// Fallback to lsof for any ports not found
+				const missingPorts = [...portSet].filter(p => !map.has(p))
+				if (missingPorts.length > 0) {
+					try {
+						// console.log('[DEBUG] Running lsof fallback')
+						const portList = missingPorts.join(',')
+						const lsofArgs = isUdp(method)
+							? ['-nP', `-iUDP:${portList}`, '-Fpn']
+							: ['-nP', `-iTCP:${portList}`, '-sTCP:LISTEN', '-Fpn']
+
+						const res = await run('lsof', lsofArgs)
+						if (!res.error && res.code <= 1 && res.stdout) {
+							const lsofMap = mapPidsFromLsof(res.stdout, new Set(missingPorts))
+							for (const [port, pids] of lsofMap) {
+								for (const pid of pids) addToMapSet(map, port, pid)
+							}
+						}
+					} catch (e) {
+						// Ignore lsof errors, return what we have
+					}
+				}
+				// console.log('[DEBUG] Resolving map')
+				resolve(map)
+			})
 			child.on('error', reject)
 		})
 	}
