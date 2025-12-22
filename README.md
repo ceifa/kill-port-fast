@@ -7,11 +7,11 @@
 </div>
 <br>
 <div align="center">
-  <a href="https://npmjs.org/package/ceifa">
-    <img src="https://img.shields.io/npm/v/ceifa.svg?style=flat-square" alt="Package version" />
+  <a href="https://npmjs.org/package/kill-port-fast">
+    <img src="https://img.shields.io/npm/v/kill-port-fast.svg?style=flat-square" alt="Package version" />
   </a>
-  <a href="https://npmjs.org/package/ceifa">
-    <img src="https://img.shields.io/npm/dm/ceifa.svg?style=flat-square" alt="Downloads" />
+  <a href="https://npmjs.org/package/kill-port-fast">
+    <img src="https://img.shields.io/npm/dm/kill-port-fast.svg?style=flat-square" alt="Downloads" />
   </a>
   <a href="https://github.com/ceifa/kill-port-fast/blob/master/LICENSE">
     <img src="https://img.shields.io/npm/l/kill-port-fast.svg?style=flat-square" alt="License" />
