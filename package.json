@@ -18,8 +18,7 @@
 	"scripts": {
 		"start": "npm run dev",
 		"test": "node --test",
-		"benchmark": "node benchmark.js",
-		"precommit": "npm test"
+		"benchmark": "node benchmark.js"
 	},
 	"keywords": [
 		"port",
