@@ -1,6 +1,6 @@
 {
 	"name": "kill-port-fast",
-	"version": "0.2.1",
+	"version": "0.2.2",
 	"description": "Kill process running on given port",
 	"license": "MIT",
 	"type": "module",
@@ -26,6 +26,10 @@
 		"kill",
 		"kill-port",
 		"port"
+	],
+	"files": [
+		"cli.js",
+		"index.js"
 	],
 	"devDependencies": {
 		"kill-port": "2.0.1"

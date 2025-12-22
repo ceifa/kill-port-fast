@@ -168,7 +168,6 @@ async function listPidsByPort(ports, method) {
 					return
 				}
 
-				// Fast filtering: check if line contains any of our ports
 				const parts = line.split(/\s+/)
 				const localAddress = parts[3]
 				if (!localAddress) return
@@ -204,18 +203,15 @@ async function listPidsByPort(ports, method) {
 				}
 
 				if (pid) {
-					// console.log(`[DEBUG] Found PID ${pid} for port ${port}`)
 					addToMapSet(map, port, pid)
 				}
 			})
 
 			rl.on('close', async () => {
-				// console.log('[DEBUG] Netstat stream closed')
 				// Fallback to lsof for any ports not found
 				const missingPorts = [...portSet].filter(p => !map.has(p))
 				if (missingPorts.length > 0) {
 					try {
-						// console.log('[DEBUG] Running lsof fallback')
 						const portList = missingPorts.join(',')
 						const lsofArgs = isUdp(method)
 							? ['-nP', `-iUDP:${portList}`, '-Fpn']
@@ -232,7 +228,6 @@ async function listPidsByPort(ports, method) {
 						// Ignore lsof errors, return what we have
 					}
 				}
-				// console.log('[DEBUG] Resolving map')
 				resolve(map)
 			})
 			child.on('error', reject)
