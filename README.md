@@ -135,10 +135,6 @@ Benchmarks show `kill-port-fast` is **3.5x to 30x faster** than `kill-port`:
 
 > **Fun fact:** This package took mass*ively* more time to develop than you'll ever save by using it instead of `kill-port`. But hey, at least you'll save precious milliseconds while I silently regret my life choices.
 
-## Contributing
-
-Got an idea for a new feature? Found a bug? Contributions are welcome! Please [open up an issue](https://github.com/tiaanduplessis/feature-flip/issues) or [make a pull request](https://makeapullrequest.com/).
-
 ## License
 
 [MIT © Tiaan du Plessis](./LICENSE)

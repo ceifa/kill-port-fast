@@ -3,6 +3,11 @@ import { createInterface } from 'readline'
 
 const toPortNumber = (value) => Number.parseInt(value, 10) || null
 const isUdp = (method) => String(method || 'tcp').toLowerCase() === 'udp'
+const toPositivePid = (value) => {
+	const pid = Number.parseInt(String(value), 10)
+	// ports sometimes are open but not assigned to any process
+	return Number.isInteger(pid) && pid > 0 ? String(pid) : null
+}
 
 function run(command, args) {
 	return new Promise((resolve) => {
@@ -19,7 +24,9 @@ function run(command, args) {
 function killPidsSafe(pids) {
 	const failures = []
 	const killed = []
-	for (const pid of pids) {
+	for (const rawPid of pids) {
+		const pid = toPositivePid(rawPid)
+		if (!pid) continue
 		try {
 			process.kill(Number(pid), 'SIGKILL')
 			killed.push(pid)
@@ -51,7 +58,7 @@ function mapPidsFromLsof(stdout, portSet) {
 	for (const line of stdout.split(/\r?\n/)) {
 		if (!line) continue
 		if (line[0] === 'p') {
-			currentPid = line.slice(1)
+			currentPid = toPositivePid(line.slice(1))
 		} else if (line[0] === 'n' && currentPid) {
 			const match = line.match(/:(\d+)(?:->|\s|$)/)
 			const port = match && Number.parseInt(match[1], 10)
@@ -70,7 +77,7 @@ function mapPidsFromNetstat(stdout, portSet, protocol) {
 		const colonIndex = localAddress?.lastIndexOf(':')
 		if (colonIndex === -1 || colonIndex == null) continue
 		const port = Number.parseInt(localAddress.slice(colonIndex + 1), 10)
-		const pid = parts[parts.length - 1]
+		const pid = toPositivePid(parts[parts.length - 1])
 		if (port && portSet.has(port) && pid) addToMapSet(map, port, pid)
 	}
 	return map
@@ -85,7 +92,11 @@ function mapPidsFromFuser(stdout, stderr, portSet) {
 		if (port) portsInOrder.push(port)
 	}
 
-	const pidsInOrder = stdout.trim().split(/\s+/).filter(p => /^\d+$/.test(p))
+	const pidsInOrder = stdout
+		.trim()
+		.split(/\s+/)
+		.map(toPositivePid)
+		.filter(Boolean)
 	if (portsInOrder.length === 1 && pidsInOrder.length > 0) {
 		const port = portsInOrder[0]
 		if (portSet.has(port)) {
@@ -183,22 +194,22 @@ async function listPidsByPort(ports, method) {
 
 				if (pidToken) {
 					if (/^\d+$/.test(pidToken) && pidToken !== '0' && !pidToken.startsWith('0')) {
-						pid = pidToken
+						pid = toPositivePid(pidToken)
 					} else if (pidToken.includes(':')) {
 						// Handle name:pid format in the column
 						const split = pidToken.split(':')
 						const last = split[split.length - 1]
-						if (/^\d+$/.test(last) && last !== '0' && !last.startsWith('0')) pid = last
+						if (/^\d+$/.test(last) && last !== '0' && !last.startsWith('0')) pid = toPositivePid(last)
 					}
 				}
 
 				if (!pid) {
 					const namePid = parts.find(p => /:\d+$/.test(p) && !p.includes('.'))
 					if (namePid) {
-						pid = namePid.split(':')[1]
+						pid = toPositivePid(namePid.split(':')[1])
 					} else {
 						const pidName = parts.find(p => /^\d+\/\S+/.test(p))
-						if (pidName) pid = pidName.split('/')[0]
+						if (pidName) pid = toPositivePid(pidName.split('/')[0])
 					}
 				}
 
@@ -262,7 +273,8 @@ export default async function killPort(port, method = 'tcp') {
 		for (const line of res.stdout.split(/\r?\n/)) {
 			if (!regex.test(line)) continue
 			const match = line.match(/\s(\d+)\s*$/)
-			if (match) pids.add(match[1])
+			const pid = match ? toPositivePid(match[1]) : null
+			if (pid) pids.add(pid)
 		}
 
 		if (pids.size === 0) throw new Error('No process running on port')
@@ -292,7 +304,7 @@ export default async function killPort(port, method = 'tcp') {
 	const res = await run('lsof', lsofArgs)
 	if (res.error) throw res.error
 
-	const pids = (res.stdout || '').trim().split(/\s+/).filter(Boolean)
+	const pids = (res.stdout || '').trim().split(/\s+/).map(toPositivePid).filter(Boolean)
 	if (pids.length === 0) {
 		if (res.code > 1) throw new Error(res.stderr || 'Failed to run lsof')
 		throw new Error('No process running on port')

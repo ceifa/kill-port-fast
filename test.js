@@ -1,7 +1,10 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { createSocket } from 'node:dgram'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { spawn } from 'node:child_process'
 import kill, { killPorts } from './index.js'
 
@@ -76,6 +79,23 @@ function spawnUdpServer(port) {
 
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+function runCli(args, env = process.env) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ['cli.js', ...args], {
+      cwd: process.cwd(),
+      env,
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+    let stdout = ''
+    let stderr = ''
+
+    child.stdout.on('data', (data) => { stdout += data.toString() })
+    child.stderr.on('data', (data) => { stderr += data.toString() })
+    child.on('error', reject)
+    child.on('close', (code) => resolve({ code, stdout, stderr }))
+  })
 }
 
 async function waitForPortAvailable(port, maxAttempts = 10) {
@@ -255,6 +275,25 @@ describe('killPorts', () => {
 })
 
 describe('integration tests', () => {
+  test('should ignore PID 0 netstat entries in CLI output', { skip: process.platform !== 'win32' }, async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'kpf-netstat-'))
+    try {
+      writeFileSync(join(tempDir, 'netstat.cmd'), `@echo off
+echo Proto  Local Address          Foreign Address        State           PID
+echo TCP    0.0.0.0:41000           0.0.0.0:0              LISTENING       0
+`)
+
+      const env = { ...process.env, PATH: `${tempDir};${process.env.PATH || ''}` }
+      const result = await runCli(['41000'], env)
+
+      assert.strictEqual(result.code, 0)
+      assert.match(result.stdout, /Could not kill process on port 41000\. No process running on port\./)
+      assert.strictEqual(result.stderr, '')
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true })
+    }
+  })
+
   describe('killing TCP server', () => {
     test('should kill a process listening on a TCP port', async () => {
       const port = await findAvailablePort(41000)
