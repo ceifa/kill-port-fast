@@ -137,4 +137,4 @@ Benchmarks show `kill-port-fast` is **3.5x to 30x faster** than `kill-port`:
 
 ## License
 
-[MIT © Tiaan du Plessis](./LICENSE)
+[MIT](./LICENSE) © Gabriel Francisco, based on [kill-port](https://github.com/tiaanduplessis/kill-port) © Tiaan du Plessis

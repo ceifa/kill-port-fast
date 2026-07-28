@@ -11,7 +11,10 @@
 	},
 	"homepage": "https://github.com/ceifa/kill-port-fast",
 	"bugs": "https://github.com/ceifa/kill-port-fast/issues",
-	"author": "Tiaan du Plessis",
+	"author": "Gabriel Francisco <gabriel@whitewall.dev>",
+	"contributors": [
+		"Tiaan du Plessis"
+	],
 	"bin": {
 		"kill-port-fast": "cli.js"
 	},
