@@ -3,6 +3,7 @@ name: Publish
 on:
     push:
         branches: [main]
+    pull_request:
 
 permissions:
     contents: read
@@ -30,6 +31,8 @@ jobs:
 
   publish:
     needs: test
+    # pull requests run the matrix above, but must never publish
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
