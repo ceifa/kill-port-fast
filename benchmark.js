@@ -65,6 +65,29 @@ async function benchmarkBatch(name, killFn, iterations, batchSize) {
   return times
 }
 
+// The common case of "is anything on 3000?" -- no servers are spawned, so these
+// ports stay untouched by the run.
+async function benchmarkMissing(killFn, iterations, batchSize) {
+  const times = []
+
+  for (let i = 0; i < iterations; i++) {
+    const ports = []
+    for (let j = 0; j < batchSize; j++) {
+      ports.push(BASE_PORT + 1000 + (i * batchSize) + j)
+    }
+
+    const start = performance.now()
+    try {
+      await killFn(batchSize === 1 ? ports[0] : ports)
+    } catch {
+      // "No process running on port" is the expected outcome here
+    }
+    times.push(performance.now() - start)
+  }
+
+  return times
+}
+
 function stats(times) {
   const sorted = [...times].sort((a, b) => a - b)
   const sum = times.reduce((a, b) => a + b, 0)
@@ -115,6 +138,15 @@ async function main() {
 
   const batchSpeedup = stats(batchSlowTimes).avg / stats(batchFastTimes).avg
   console.log(`  Speedup: ${batchSpeedup.toFixed(2)}x faster\n`)
+
+  console.log('No process on port (kill-port-fast):')
+
+  const missingSingle = await benchmarkMissing(killPortFast, ITERATIONS, 1)
+  printResults('single port', missingSingle)
+
+  const missingBatch = await benchmarkMissing(killPorts, ITERATIONS, 5)
+  printResults('batch (5 ports)', missingBatch)
+  console.log()
 
   console.log('Summary:')
   console.log(`  Single port: kill-port-fast is ${singleSpeedup.toFixed(2)}x faster`)
