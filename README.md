@@ -133,11 +133,6 @@ Benchmarks show `kill-port-fast` is **3.5x to 20x faster** than `kill-port`:
 | Ubuntu   | 5.6x faster  | 6.9x faster     |
 | Windows  | 3.5x faster  | 7.6x faster     |
 
-Ports are resolved without external tools wherever the OS exposes its socket table
-directly: on Linux that means reading `/proc/net` and the `/proc/<pid>/fd` links, so
-nothing is spawned at all. Asking about a port that has nothing on it — the common
-case — costs 3.2ms on macOS and 9.5ms on Linux.
-
 Numbers come from the `Benchmark` workflow on GitHub-hosted runners; absolute timings
 vary by machine and by how busy it is.
 
