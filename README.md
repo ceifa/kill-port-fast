@@ -125,13 +125,21 @@ $ npx kill-port-fast 9000 3000 5000
 
 ## Performance
 
-Benchmarks show `kill-port-fast` is **3.5x to 30x faster** than `kill-port`:
+Benchmarks show `kill-port-fast` is **3.5x to 20x faster** than `kill-port`:
 
-| Platform | Single Port | Batch (5 ports) |
-|----------|-------------|-----------------|
-| macOS    | 5.4x faster | 29.9x faster    |
-| Ubuntu   | 5.0x faster | 5.2x faster     |
-| Windows  | 3.5x faster | 7.1x faster     |
+| Platform | Single Port  | Batch (5 ports) |
+|----------|--------------|-----------------|
+| macOS    | 20.2x faster | 19.4x faster    |
+| Ubuntu   | 5.6x faster  | 6.9x faster     |
+| Windows  | 3.5x faster  | 7.6x faster     |
+
+Ports are resolved without external tools wherever the OS exposes its socket table
+directly: on Linux that means reading `/proc/net` and the `/proc/<pid>/fd` links, so
+nothing is spawned at all. Asking about a port that has nothing on it — the common
+case — costs 3.2ms on macOS and 9.5ms on Linux.
+
+Numbers come from the `Benchmark` workflow on GitHub-hosted runners; absolute timings
+vary by machine and by how busy it is.
 
 > **Fun fact:** This package took mass*ively* more time to develop than you'll ever save by using it instead of `kill-port`. But hey, at least you'll save precious milliseconds while I silently regret my life choices.
 
